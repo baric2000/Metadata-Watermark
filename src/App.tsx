@@ -38,6 +38,9 @@ interface Metadata {
   showSteps: boolean;
   showCfg: boolean;
   showDenoise: boolean;
+  showCustomText: boolean;
+  customText: string;
+  uppercaseNames: boolean;
   // Mock values for preview
   model: string;
   loras: string;
@@ -79,6 +82,9 @@ const DEFAULT_METADATA: Metadata = {
   showSteps: true,
   showCfg: true,
   showDenoise: true,
+  showCustomText: true,
+  customText: "AI ARTIST",
+  uppercaseNames: true,
   model: "aMixIllustrious_aMix.safetensors",
   loras: "Detail_Tweaker, Skin_Texture_v2",
   sampler: "euler_ancestral",
@@ -191,21 +197,26 @@ export default function App() {
 
         ctx.fillStyle = style.fontColor;
         
+        const cleanName = (name: string) => {
+          const cleaned = name.replace(/\.(safetensors|ckpt)$/i, '').replace(/[_.-]/g, ' ');
+          return metadata.uppercaseNames ? cleaned.toUpperCase() : cleaned;
+        };
+
         // 2. Top Masthead (Model/LoRA Name with Wrapping)
         const effectiveMastheadSource = (style.mastheadSource === 'model' && metadata.showModel) || !metadata.showLora 
           ? 'model' 
           : 'lora';
 
         const mastheadText = effectiveMastheadSource === 'model' 
-          ? metadata.model.replace(/\.(safetensors|ckpt)$/i, '')
+          ? metadata.model
           : metadata.loras;
 
         if ((effectiveMastheadSource === 'model' && metadata.showModel) || (effectiveMastheadSource === 'lora' && metadata.showLora)) {
           ctx.font = `900 ${mastheadSize}px "${style.fontFamily}", sans-serif`;
           ctx.textBaseline = "top";
           
-          const cleanText = mastheadText.toUpperCase();
-          const words = cleanText.split(/[_.\s-]/);
+          const displayMainText = cleanName(mastheadText);
+          const words = displayMainText.split(" ");
           let line = "";
           let y = margin;
           const maxWidth = canvas.width - margin * 2;
@@ -227,13 +238,13 @@ export default function App() {
           // 2.1 Sub-Masthead (The one not chosen as main)
           const subSource = effectiveMastheadSource === 'model' ? 'lora' : 'model';
           const showSub = subSource === 'model' ? metadata.showModel : metadata.showLora;
-          const subText = subSource === 'model' ? metadata.model.replace(/\.(safetensors|ckpt)$/i, '') : metadata.loras;
+          const subTextRaw = subSource === 'model' ? metadata.model : metadata.loras;
 
-          if (showSub && subText) {
+          if (showSub && subTextRaw) {
             const subSize = mastheadSize / 3;
             ctx.font = `600 ${subSize}px "${style.fontFamily}", sans-serif`;
             ctx.globalAlpha = 0.8;
-            ctx.fillText(subText.toUpperCase(), margin, y + margin * 0.5);
+            ctx.fillText(cleanName(subTextRaw), margin, y + margin * 0.5);
             ctx.globalAlpha = 1.0;
           }
         }
@@ -273,10 +284,15 @@ export default function App() {
       } else {
         // --- Classic Watermark Rendering ---
         const lines: string[] = [];
-        if (metadata.showModel) lines.push(`Model: ${metadata.model}`);
+        const cleanName = (name: string) => {
+          const cleaned = name.replace(/\.(safetensors|ckpt)$/i, '').replace(/[_.-]/g, ' ');
+          return metadata.uppercaseNames ? cleaned.toUpperCase() : cleaned;
+        };
+
+        if (metadata.showModel) lines.push(`Model: ${cleanName(metadata.model)}`);
         
         let line2 = "";
-        if (metadata.showLora && metadata.loras) line2 += `LoRA: ${metadata.loras} `;
+        if (metadata.showLora && metadata.loras) line2 += `LoRA: ${cleanName(metadata.loras)} `;
         if (metadata.showSampler) line2 += `Sampler: ${metadata.sampler} `;
         if (metadata.showScheduler) line2 += `| Scheduler: ${metadata.scheduler} `;
         if (metadata.showSteps) line2 += `| Steps: ${metadata.steps} `;
@@ -287,6 +303,8 @@ export default function App() {
         if (metadata.showSeed) line3 += `Seed: ${metadata.seed} `;
         if (metadata.showDenoise) line3 += `| Denoise: ${metadata.denoise}`;
         if (line3.trim()) lines.push(line3.trim().replace(/^\| /, ''));
+
+        if (metadata.showCustomText && metadata.customText) lines.push(metadata.customText);
 
         if (lines.length === 0) return;
 
@@ -364,6 +382,9 @@ class MetadataWatermark:
                 "show_steps": ("BOOLEAN", {"default": ${toPyBool(metadata.showSteps)}}),
                 "show_cfg": ("BOOLEAN", {"default": ${toPyBool(metadata.showCfg)}}),
                 "show_denoise": ("BOOLEAN", {"default": ${toPyBool(metadata.showDenoise)}}),
+                "show_custom_text": ("BOOLEAN", {"default": ${toPyBool(metadata.showCustomText)}}),
+                "custom_text": ("STRING", {"default": "${metadata.customText}"}),
+                "uppercase_names": ("BOOLEAN", {"default": ${toPyBool(metadata.uppercaseNames)}}),
                 "layout_mode": (["watermark", "magazine"], {"default": "${style.layoutMode}"}),
                 "masthead_source": (["model", "lora"], {"default": "${style.mastheadSource}"}),
                 "font_family": (["Inter", "Playfair Display", "Space Grotesk", "Anton", "JetBrains Mono"], {"default": "${style.fontFamily}"}),
@@ -381,7 +402,7 @@ class MetadataWatermark:
     FUNCTION = "apply_watermark"
     CATEGORY = "image/postprocessing"
 
-    def apply_watermark(self, images, show_model, show_lora, show_sampler, show_scheduler, show_seed, show_steps, show_cfg, show_denoise, layout_mode, masthead_source, font_family, font_size, position, bg_opacity, 
+    def apply_watermark(self, images, show_model, show_lora, show_sampler, show_scheduler, show_seed, show_steps, show_cfg, show_denoise, show_custom_text, custom_text, uppercase_names, layout_mode, masthead_source, font_family, font_size, position, bg_opacity, 
                         prompt=None, extra_pnginfo=None):
         
         # --- Global Feature Scan Metadata Extraction ---
@@ -573,6 +594,12 @@ class MetadataWatermark:
                     draw.line([(x, 0), (x, img.height)], fill=(0, 0, 0, min(255, alpha)))
 
                 # 2. Top Masthead (Wrapped)
+                def process_name(name):
+                    import re
+                    cleaned = re.sub(r'\.(safetensors|ckpt)$', '', name, flags=re.IGNORECASE)
+                    cleaned = re.sub(r'[_.\s-]', ' ', cleaned).strip()
+                    return cleaned.upper() if uppercase_names else cleaned
+
                 effective_masthead = "model"
                 if masthead_source == "lora" and show_lora and lora_names:
                     effective_masthead = "lora"
@@ -583,19 +610,16 @@ class MetadataWatermark:
                 sub_text = ""
                 
                 if effective_masthead == "model":
-                    import re
-                    main_text = re.sub(r'\.(safetensors|ckpt)$', '', model_name, flags=re.IGNORECASE).upper()
+                    main_text = process_name(model_name)
                     if show_lora and lora_names:
-                        sub_text = ", ".join(lora_names).upper()
+                        sub_text = " • ".join([process_name(l) for l in lora_names])
                 else:
-                    main_text = ", ".join(lora_names).upper()
+                    main_text = " • ".join([process_name(l) for l in lora_names])
                     if show_model:
-                        import re
-                        sub_text = re.sub(r'\.(safetensors|ckpt)$', '', model_name, flags=re.IGNORECASE).upper()
+                        sub_text = process_name(model_name)
 
                 if main_text:
-                    import re
-                    words = re.split(r'[_.\s-]', main_text)
+                    words = main_text.split(" ")
                     lines = []
                     current_line = ""
                     max_w = img.width - margin * 2
@@ -632,6 +656,7 @@ class MetadataWatermark:
                 if show_cfg: meta_items.append(("CFG", str(cfg)))
                 if show_seed: meta_items.append(("SEED", str(seed)))
                 if show_denoise: meta_items.append(("DENOISE", str(denoise)))
+                if show_custom_text and custom_text: meta_items.append(("NOTE", custom_text))
 
                 y_cursor = img.height - margin
                 for label, value in reversed(meta_items):
@@ -651,17 +676,23 @@ class MetadataWatermark:
             
             else:
                 # --- Classic Watermark Layout ---
+                def process_name(name):
+                    cleaned = re.sub(r'\.(safetensors|ckpt)$', '', name, flags=re.IGNORECASE)
+                    cleaned = re.sub(r'[_.\s-]', ' ', cleaned).strip()
+                    return cleaned.upper() if uppercase_names else cleaned
+
                 # Re-load font for classic if needed
                 try:
                     c_font = ImageFont.truetype(font_path, actual_font_size) if font_path else ImageFont.load_default()
                 except:
                     c_font = ImageFont.load_default()
                 lines = []
-                if show_model: lines.append(f"Model: {model_name}")
+                if show_model: lines.append(f"Model: {process_name(model_name)}")
                 
                 line2 = ""
                 if show_lora and lora_names:
-                    line2 += f"LoRA: {', '.join(lora_names)} "
+                    processed_loras = [process_name(l) for l in lora_names]
+                    line2 += f"LoRA: {', '.join(processed_loras)} "
                 if show_sampler: line2 += f"Sampler: {sampler_name} "
                 if show_scheduler: line2 += f"| Scheduler: {scheduler} "
                 if show_steps: line2 += f"| Steps: {steps} "
@@ -672,6 +703,8 @@ class MetadataWatermark:
                 if show_seed: line3 += f"Seed: {seed} "
                 if show_denoise: line3 += f"| Denoise: {denoise}"
                 if line3.strip(): lines.append(line3.strip().lstrip("| "))
+                
+                if show_custom_text and custom_text: lines.append(custom_text)
 
                 if not lines:
                     results.append(image)
@@ -764,6 +797,8 @@ class MetadataWatermark:
                 { id: 'showCfg', label: 'CFG' },
                 { id: 'showSeed', label: 'Seed' },
                 { id: 'showDenoise', label: 'Denoise' },
+                { id: 'showCustomText', label: 'Custom Text' },
+                { id: 'uppercaseNames', label: 'Uppercase Names' },
               ].map(item => (
                 <label key={item.id} className="flex items-center gap-3 p-2 bg-black/20 rounded-lg cursor-pointer hover:bg-white/5 transition-colors">
                   <input 
@@ -776,6 +811,19 @@ class MetadataWatermark:
                 </label>
               ))}
             </div>
+
+            {metadata.showCustomText && (
+              <div className="space-y-1.5 pt-2 border-t border-white/5">
+                <label className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">Custom Content</label>
+                <input 
+                  type="text"
+                  value={metadata.customText}
+                  onChange={e => setMetadata({...metadata, customText: e.target.value})}
+                  placeholder="e.g. AI Artist / Photographer"
+                  className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs text-white/80 focus:border-orange-500 outline-none transition-all"
+                />
+              </div>
+            )}
             <p className="text-[10px] text-white/30 italic">Note: Values will be automatically extracted from your ComfyUI workflow at runtime.</p>
           </section>
 
