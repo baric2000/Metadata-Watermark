@@ -203,15 +203,17 @@ export default function App() {
         };
 
         // 2. Top Masthead (Model/LoRA Name with Wrapping)
-        const effectiveMastheadSource = (style.mastheadSource === 'model' && metadata.showModel) || !metadata.showLora 
-          ? 'model' 
-          : 'lora';
+        const effectiveMastheadSource = (style.mastheadSource === 'lora' && metadata.showLora && metadata.loras) || (!metadata.showModel && metadata.showLora && metadata.loras)
+          ? 'lora'
+          : 'model';
 
         const mastheadText = effectiveMastheadSource === 'model' 
           ? metadata.model
           : metadata.loras;
 
-        if ((effectiveMastheadSource === 'model' && metadata.showModel) || (effectiveMastheadSource === 'lora' && metadata.showLora)) {
+        const showMain = effectiveMastheadSource === 'model' ? metadata.showModel : metadata.showLora;
+
+        if (showMain && mastheadText) {
           ctx.font = `900 ${mastheadSize}px "${style.fontFamily}", sans-serif`;
           ctx.textBaseline = "top";
           
@@ -609,11 +611,11 @@ class MetadataWatermark:
                 main_text = ""
                 sub_text = ""
                 
-                if effective_masthead == "model":
+                if effective_masthead == "model" and show_model:
                     main_text = process_name(model_name)
                     if show_lora and lora_names:
                         sub_text = " • ".join([process_name(l) for l in lora_names])
-                else:
+                elif effective_masthead == "lora" and show_lora:
                     main_text = " • ".join([process_name(l) for l in lora_names])
                     if show_model:
                         sub_text = process_name(model_name)
