@@ -1,0 +1,5 @@
+{
+  "name": "ComfyUI Watermark Designer",
+  "description": "Design and preview metadata watermarks for AI images. Generates Python code for ComfyUI custom nodes.",
+  "requestFramePermissions": []
+}
